@@ -4,6 +4,7 @@ import docker
 import json
 import resource
 import traceback
+import copy
 
 from argparse import ArgumentParser
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -97,7 +98,23 @@ def run_instance(
     if report_path.exists():
         return instance_id, json.loads(report_path.read_text())
     logger = setup_logger(instance_id, log_file)
+    
+    if isinstance(pred["model_patch"], list):
+        print(f"{instance_id} has more than one patches, evaluate them one by one...")
+        final_report = {}
+        for patch_i, model_patch in enumerate(pred["model_patch"]):
+            tmp_pred = copy.deepcopy(pred)
+            tmp_pred["model_patch"] = model_patch
+            tmp_report_path = log_dir / f"{patch_i}-report.json"
+            result = run_patch(test_spec, client, run_id, logger, rm_image, force_rebuild, instance_id, log_dir, tmp_pred, tmp_report_path, timeout)
+            if result:
+                if final_report == {} or result[1][instance_id]["resolved"]:
+                    final_report = result[1]
+        return instance_id, final_report
+    else:
+        return run_patch(test_spec, client, run_id, logger, rm_image, force_rebuild, instance_id, log_dir, pred, report_path, timeout)
 
+def run_patch(test_spec, client, run_id, logger, rm_image, force_rebuild, instance_id, log_dir, pred, report_path, timeout):
     # Run the instance
     container = None
     try:
