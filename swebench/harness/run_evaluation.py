@@ -102,6 +102,7 @@ def run_instance(
     if isinstance(pred["model_patch"], list):
         print(f"{instance_id} has more than one patches, evaluate them one by one...")
         final_report = {}
+        resolved_patch = 0
         for patch_i, model_patch in enumerate(pred["model_patch"]):
             tmp_pred = copy.deepcopy(pred)
             tmp_pred["model_patch"] = model_patch
@@ -110,6 +111,13 @@ def run_instance(
             if result:
                 if final_report == {} or result[1][instance_id]["resolved"]:
                     final_report = result[1]
+                if result[1][instance_id]["resolved"]:
+                    resolved_patch += 1
+        total_patch = len(pred["model_patch"])
+        final_report["resolved_rate"] = f"{resolved_patch}/{total_patch}" 
+        # Write report to report.json
+        with open(report_path, "w") as f:
+            f.write(json.dumps(final_report, indent=4))
         return instance_id, final_report
     else:
         return run_patch(test_spec, client, run_id, logger, rm_image, force_rebuild, instance_id, log_dir, pred, report_path, timeout)
@@ -437,10 +445,11 @@ def make_run_report(
         image_name = spec.instance_image_key
         if image_name in images:
             unremoved_images.add(image_name)
-    containers = client.containers.list(all=True)
-    for container in containers:
-        if run_id in container.name:
-            unstopped_containers.add(container.name)
+    # Dont know why but always timeout
+    # containers = client.containers.list(all=True)
+    # for container in containers:
+    #     if run_id in container.name:
+    #         unstopped_containers.add(container.name)
 
     # print final report
     dataset_ids = {i[KEY_INSTANCE_ID] for i in full_dataset}

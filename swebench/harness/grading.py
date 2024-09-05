@@ -241,6 +241,7 @@ def get_eval_report(
         report_map[instance_id]["none"] = True
         return report_map
     report_map[instance_id]["patch_exists"] = True
+    report_map[instance_id]["patch"] = prediction["model_patch"]
 
     # patch info
     try:
