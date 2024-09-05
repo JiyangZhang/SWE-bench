@@ -260,6 +260,23 @@ def get_eval_report(
         report_map[instance_id]["patch_lines_add"] = 0
         report_map[instance_id]["patch_lines_del"] = 0
 
+    # patch info
+    try:
+        diff_obj = PatchSet(prediction["model_patch"])
+        report_map[instance_id]["patch_files"] = [
+            x.path
+            for x in diff_obj.modified_files
+            + diff_obj.added_files
+            + diff_obj.removed_files
+        ]
+        report_map[instance_id]["patch_lines_add"] = sum([f.added for f in diff_obj])
+        report_map[instance_id]["patch_lines_del"] = sum([f.removed for f in diff_obj])
+    except Exception as e:
+        print(f"[{prediction['model_patch']}] Error parsing prediction diff: {e}")
+        report_map[instance_id]["patch_files"] = []
+        report_map[instance_id]["patch_lines_add"] = 0
+        report_map[instance_id]["patch_lines_del"] = 0
+
     # Get evaluation logs
     eval_sm, found = get_logs_eval(log_path)
 
