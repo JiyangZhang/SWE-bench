@@ -98,7 +98,8 @@ def run_instance(
     if report_path.exists():
         return instance_id, json.loads(report_path.read_text())
     logger = setup_logger(instance_id, log_file)
-    
+    if pred["model_patch"] == []:
+        pred["model_patch"] = None
     if isinstance(pred["model_patch"], list):
         print(f"{instance_id} has more than one patches, evaluate them one by one...")
         final_report = {}
@@ -431,11 +432,14 @@ def make_run_report(
             completed_ids.add(instance_id)
             report = json.loads(report_file.read_text())
             score_cards.append(report)
-            if report[instance_id]["resolved"]:
-                # Record if the instance was resolved
-                resolved_ids.add(instance_id)
+            if instance_id not in report:
+                error_ids.add(instance_id)
             else:
-                unresolved_ids.add(instance_id)
+                if report[instance_id]["resolved"]:
+                    # Record if the instance was resolved
+                    resolved_ids.add(instance_id)
+                else:
+                    unresolved_ids.add(instance_id)
         else:
             # Otherwise, the instance was not run successfully
             error_ids.add(instance_id)
