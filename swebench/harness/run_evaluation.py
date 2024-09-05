@@ -408,6 +408,7 @@ def make_run_report(
     empty_patch_ids = set()
 
     # iterate through dataset and check if the instance has been run
+    score_cards = []
     for instance in full_dataset:
         instance_id = instance[KEY_INSTANCE_ID]
         if instance_id not in predictions:
@@ -429,6 +430,7 @@ def make_run_report(
             # If report file exists, then the instance has been run
             completed_ids.add(instance_id)
             report = json.loads(report_file.read_text())
+            score_cards.append(report)
             if report[instance_id]["resolved"]:
                 # Record if the instance was resolved
                 resolved_ids.add(instance_id)
@@ -492,7 +494,16 @@ def make_run_report(
     )
     with open(report_file, "w") as f:
         print(json.dumps(report, indent=4), file=f)
+    score_cards_file = Path(
+        "scorecards." + list(predictions.values())[0]["model_name_or_path"].replace("/", "__")
+        + f".{run_id}"
+        + ".json"
+    )
+    with open(score_cards_file, "w") as f:
+        print(json.dumps(score_cards, indent=4), file=f)
+    
     print(f"Report written to {report_file}")
+    
     return report_file
 
 
