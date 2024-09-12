@@ -62,6 +62,7 @@ def run_instance(
         client: docker.DockerClient,
         run_id: str,
         timeout: int | None = None,
+        patch_key: str = "model_patch",
     ):
     """
     Run a single instance with the given prediction.
@@ -98,32 +99,32 @@ def run_instance(
     if report_path.exists():
         return instance_id, json.loads(report_path.read_text())
     logger = setup_logger(instance_id, log_file)
-    if pred["model_patch"] == []:
-        pred["model_patch"] = None
-    if isinstance(pred["model_patch"], list):
+    if pred[patch_key] == []:
+        pred[patch_key] = None
+    if isinstance(pred[patch_key], list):
         print(f"{instance_id} has more than one patches, evaluate them one by one...")
         final_report = {}
         resolved_patch = 0
-        for patch_i, model_patch in enumerate(pred["model_patch"]):
+        for patch_i, model_patch in enumerate(pred[patch_key]):
             tmp_pred = copy.deepcopy(pred)
-            tmp_pred["model_patch"] = model_patch
+            tmp_pred[patch_key] = model_patch
             tmp_report_path = log_dir / f"{patch_i}-report.json"
-            result = run_patch(test_spec, client, run_id, logger, rm_image, force_rebuild, instance_id, log_dir, tmp_pred, tmp_report_path, timeout)
+            result = run_patch(test_spec, client, run_id, logger, rm_image, force_rebuild, instance_id, log_dir, tmp_pred, tmp_report_path, timeout, patch_key)
             if result:
                 if final_report == {} or result[1][instance_id]["resolved"]:
                     final_report = result[1]
                 if result[1][instance_id]["resolved"]:
                     resolved_patch += 1
-        total_patch = len(pred["model_patch"])
+        total_patch = len(pred[patch_key])
         final_report["resolved_rate"] = f"{resolved_patch}/{total_patch}" 
         # Write report to report.json
         with open(report_path, "w") as f:
             f.write(json.dumps(final_report, indent=4))
         return instance_id, final_report
     else:
-        return run_patch(test_spec, client, run_id, logger, rm_image, force_rebuild, instance_id, log_dir, pred, report_path, timeout)
+        return run_patch(test_spec, client, run_id, logger, rm_image, force_rebuild, instance_id, log_dir, pred, report_path, timeout, patch_key)
 
-def run_patch(test_spec, client, run_id, logger, rm_image, force_rebuild, instance_id, log_dir, pred, report_path, timeout):
+def run_patch(test_spec, client, run_id, logger, rm_image, force_rebuild, instance_id, log_dir, pred, report_path, timeout, patch_key="model_patch"):
     # Run the instance
     container = None
     try:
@@ -134,7 +135,7 @@ def run_patch(test_spec, client, run_id, logger, rm_image, force_rebuild, instan
 
         # Copy model prediction as patch file to container
         patch_file = Path(log_dir / "patch.diff")
-        patch_file.write_text(pred["model_patch"] or "")
+        patch_file.write_text(pred[patch_key] or "")
         logger.info(
             f"Intermediate patch for {instance_id} written to {patch_file}, now applying to container..."
         )
@@ -253,6 +254,7 @@ def run_instances(
         max_workers: int,
         run_id: str,
         timeout: int,
+        patch_key: str = "model_patch"
     ):
     """
     Run all instances for the given predictions in parallel.
@@ -299,6 +301,7 @@ def run_instances(
                     client,
                     run_id,
                     timeout,
+                    patch_key,
                 ): None
                 for test_spec in test_specs
             }
@@ -537,12 +540,14 @@ def main(
         open_file_limit: int,
         run_id: str,
         timeout: int,
+        topk: bool,
     ):
     """
     Run evaluation harness for the given dataset and predictions.
     """
     # set open file limit
     assert len(run_id) > 0, "Run ID must be provided"
+    patch_key = "candidates" if topk else "model_patch"
     resource.setrlimit(resource.RLIMIT_NOFILE, (open_file_limit, open_file_limit))
     client = docker.from_env()
 
@@ -571,7 +576,7 @@ def main(
     else:
         # build environment images + run instances
         build_env_images(client, dataset, force_rebuild, max_workers)
-        run_instances(predictions, dataset, cache_level, clean, force_rebuild, max_workers, run_id, timeout)
+        run_instances(predictions, dataset, cache_level, clean, force_rebuild, max_workers, run_id, timeout, patch_key)
 
     # clean images + make final report
     clean_images(client, existing_images, cache_level, clean)
@@ -591,6 +596,12 @@ if __name__ == "__main__":
         )
     parser.add_argument(
         "--force_rebuild", type=str2bool, default=False, help="Force rebuild of all images"
+    )
+    parser.add_argument(
+        "--topk",
+        type=str2bool,
+        default=False,
+        help="Evaluate topk patches or the best patch",
     )
     parser.add_argument(
         "--cache_level",
